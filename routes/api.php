@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\AdminUserController;
 use App\Http\Controllers\Api\AdminChatController;
 use App\Http\Controllers\Api\AdminCannedResponseController;
 use App\Http\Controllers\Api\BagController;
+use App\Http\Controllers\Api\CallController;
 use App\Http\Controllers\Api\ChatController;
 use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\GroupChatController;
@@ -24,32 +25,38 @@ use App\Http\Controllers\Api\WikipediaController;
 
 /*
 |--------------------------------------------------------------------------
-| AUTH — Registration
+| AUTH (needs `web` middleware so sessions work — required for OTP)
 |--------------------------------------------------------------------------
 */
 
-Route::post('/register', [AuthController::class, 'register']);
-Route::post('/verify-registration-otp', [AuthController::class, 'verifyRegistrationOtp']);
-Route::post('/resend-registration-otp', [AuthController::class, 'resendRegistrationOtp']);
+Route::middleware('web')->group(function () {
 
-/*
-|--------------------------------------------------------------------------
-| AUTH — Login
-|--------------------------------------------------------------------------
-*/
+    /*
+    |----------------------------------------------------------------------
+    | Registration
+    |----------------------------------------------------------------------
+    */
+    Route::post('/register', [AuthController::class, 'register']);
+    Route::post('/verify-registration-otp', [AuthController::class, 'verifyRegistrationOtp']);
+    Route::post('/resend-registration-otp', [AuthController::class, 'resendRegistrationOtp']);
 
-Route::post('/login', [AuthController::class, 'login']);
+    /*
+    |----------------------------------------------------------------------
+    | Login
+    |----------------------------------------------------------------------
+    */
+    Route::post('/login', [AuthController::class, 'login']);
 
-/*
-|--------------------------------------------------------------------------
-| AUTH — Forgot Password
-|--------------------------------------------------------------------------
-*/
-
-Route::post('/forgot-password', [AuthController::class, 'forgotPassword']);
-Route::post('/verify-password-otp', [AuthController::class, 'verifyPasswordResetOtp']);
-Route::post('/resend-password-otp', [AuthController::class, 'resendPasswordResetOtp']);
-Route::post('/reset-password', [AuthController::class, 'resetPassword']);
+    /*
+    |----------------------------------------------------------------------
+    | Forgot Password
+    |----------------------------------------------------------------------
+    */
+    Route::post('/forgot-password', [AuthController::class, 'forgotPassword']);
+    Route::post('/verify-password-otp', [AuthController::class, 'verifyPasswordResetOtp']);
+    Route::post('/resend-password-otp', [AuthController::class, 'resendPasswordResetOtp']);
+    Route::post('/reset-password', [AuthController::class, 'resetPassword']);
+});
 
 /*
 |--------------------------------------------------------------------------
@@ -103,6 +110,20 @@ Route::middleware(['web', 'auth:sanctum'])->group(function () {
     |----------------------------------------------------------------------
     */
     Route::get('/user/all', [DashboardController::class, 'user']);
+
+    /*
+    |======================================================================
+    | CALLS (Voice / Video via WebRTC + Reverb)
+    |======================================================================
+    */
+    Route::prefix('calls')->group(function () {
+        Route::get('/',            [CallController::class, 'index']);
+        Route::post('start',       [CallController::class, 'start']);
+        Route::post('{id}/accept', [CallController::class, 'accept']);
+        Route::post('{id}/reject', [CallController::class, 'reject']);
+        Route::post('{id}/end',    [CallController::class, 'end']);
+        Route::post('{id}/signal', [CallController::class, 'signal']);
+    });
 
     /*
     |======================================================================

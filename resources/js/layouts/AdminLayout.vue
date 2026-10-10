@@ -39,9 +39,9 @@
                     <span>Customer Chats</span>
                 </router-link>
                 <router-link to="/dashboard/groups" class="nav-item" @click="closeSidebar">
-    <i class="fa-solid fa-users"></i>
-    <span>Groups</span>
-</router-link>
+                    <i class="fa-solid fa-users"></i>
+                    <span>Groups</span>
+                </router-link>
                 <router-link :to="{ name: 'admin.profile' }" class="nav-item" @click="closeSidebar">
                     <i class="fa-solid fa-user"></i>
                     <span>Profile</span>
@@ -97,6 +97,9 @@
 
         </div>
 
+        <!-- 📞 Call widget (incoming + active call UI) -->
+        <CallWidget :current-user="user" />
+
     </div>
 </template>
 
@@ -105,6 +108,9 @@
 import { computed, ref, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { authState, loadUser, logout } from '../stores/auth';
+
+// ⭐ Call widget
+import CallWidget from '../components/CallWidget.vue';
 
 const router = useRouter();
 const route = useRoute();

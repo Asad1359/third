@@ -40,21 +40,18 @@ export const register = async (data) => {
 |--------------------------------------------------------------------------
 */
 
-export const verifyRegistrationOtp = async (
-    emailOrOtp,
-    otpMaybe
-) => {
+export const verifyRegistrationOtp = async (emailOrOtp, otpMaybe) => {
     const payload =
         otpMaybe !== undefined
             ? { email: emailOrOtp, otp: otpMaybe }
             : { otp: emailOrOtp };
 
-    return api.post('/register/verify-otp', payload);
+    return api.post('/verify-registration-otp', payload);
 };
 
 export const resendRegistrationOtp = async (email = null) => {
     return api.post(
-        '/register/resend-otp',
+        '/resend-registration-otp',
         email ? { email } : {}
     );
 };
@@ -100,23 +97,20 @@ export const forgotPassword = async (email) => {
     return api.post('/forgot-password', { email });
 };
 
-export const verifyPasswordResetOtp = async (
-    emailOrOtp,
-    otpMaybe
-) => {
+export const verifyPasswordResetOtp = async (emailOrOtp, otpMaybe) => {
     const payload =
         otpMaybe !== undefined
             ? { email: emailOrOtp, otp: otpMaybe }
             : { otp: emailOrOtp };
 
-    return api.post('/forgot-password/verify-otp', payload);
+    return api.post('/verify-password-otp', payload);
 };
 
 export const verifyPasswordOtp = verifyPasswordResetOtp;
 
 export const resendPasswordResetOtp = async (email = null) => {
     return api.post(
-        '/forgot-password/resend-otp',
+        '/resend-password-otp',
         email ? { email } : {}
     );
 };
@@ -142,7 +136,7 @@ export const resetPassword = async (payload, passwordConfirmation) => {
 */
 
 export const changePassword = async (data) => {
-    return api.post('/profile/password', data);
+    return api.post('/profile/change-password', data);
 };
 
 export const updatePassword = changePassword;

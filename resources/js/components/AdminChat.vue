@@ -148,6 +148,28 @@
                         <span>{{ selectedUser.email }}</span>
                     </div>
 
+                    <!-- 📞 CALL BUTTON -->
+                    <button
+                        class="header-call-btn"
+                        type="button"
+                        title="Audio call customer"
+                        @click="startAudioCall"
+                    >
+                        <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            width="20"
+                            height="20"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                        >
+                            <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>
+                        </svg>
+                    </button>
+
                     <!-- Three-dot menu -->
                     <div class="header-menu-wrapper">
                         <button
@@ -315,10 +337,21 @@
                             class="message-row"
                             :class="{
                                 'admin-row': message.sender_type === 'admin',
-                                'user-row': message.sender_type === 'user'
+                                'user-row': message.sender_type === 'user',
+                                'system-row': message.sender_type === 'system'
                             }"
                         >
+                            <!-- ⭐ SYSTEM MESSAGE (call logs, etc.) -->
                             <div
+                                v-if="message.sender_type === 'system'"
+                                class="system-message"
+                            >
+                                {{ message.message }}
+                            </div>
+
+                            <!-- NORMAL MESSAGE -->
+                            <div
+                                v-else
                                 class="message-bubble-wrapper"
                                 @contextmenu.prevent="openMenu($event, message)"
                             >
@@ -724,6 +757,12 @@
             :src="lightboxSrc"
         />
 
+        <!-- 📞 Call widget (incoming + active call UI) -->
+        <CallWidget
+            ref="callWidgetRef"
+            :current-user="currentUser"
+        />
+
     </div>
 
 
@@ -927,7 +966,7 @@ import {
     sendAdminChatMessage,
     markAdminChatAsRead,
     sendAdminTyping,
-    deleteAdminChatMessage,    // ✅ Admin delete
+    deleteAdminChatMessage,
     getCannedResponses,
     searchAdminChat,
     assignConversation,
@@ -944,6 +983,9 @@ import { authState } from '../stores/auth';
 import VoicePlayer from './VoicePlayer.vue';
 import ImageLightbox from './ImageLightbox.vue';
 
+// ⭐ Call widget
+import CallWidget from './CallWidget.vue';
+
 
 /*
 |--------------------------------------------------------------------------
@@ -953,8 +995,8 @@ import ImageLightbox from './ImageLightbox.vue';
 
 const conversations = ref([]);
 const selectedUser = ref(null);
-const selectedConversationId = ref(null);   // ⭐ conversation.id
-const selectedUserId = ref(null);            // user_id (for reference)
+const selectedConversationId = ref(null);
+const selectedUserId = ref(null);
 
 const messages = ref([]);
 const newMessage = ref('');
@@ -980,21 +1022,22 @@ const searchResults = ref([]);
 const lightboxOpen = ref(false);
 const lightboxSrc = ref('');
 
-// Context menus
 const activeMenu = ref(null);
 const activeMenuMessage = ref(null);
 const menuStyle = ref({ top: '0px', left: '0px' });
 
-// Header menu
 const showHeaderMenu = ref(false);
 
-// User context menu
 const userContextMenu = ref({
     show: false,
     x: 0,
     y: 0,
     conversation: null,
 });
+
+// ⭐ Call
+const callWidgetRef = ref(null);
+const currentUser = computed(() => authState.user);
 
 let pollingTimer = null;
 let typingTimer = null;
@@ -1028,8 +1071,11 @@ let liveBarTimer = null;
 
 const { connected } = useAdminChatChannel({
     onMessage: (payload) => {
-        // ⭐ payload.user_id aur selectedUserId match karo
-        if (Number(payload.user_id) === Number(selectedUserId.value)) {
+        // Only push message if it belongs to the currently selected user
+        const belongsToSelected =
+            Number(payload.user_id) === Number(selectedUserId.value);
+
+        if (belongsToSelected) {
             if (!messages.value.some((m) => m.id === payload.id)) {
                 messages.value.push(payload);
                 scrollToBottom();
@@ -1139,6 +1185,27 @@ const contextIsArchived = computed(() => {
 
 /*
 |--------------------------------------------------------------------------
+| 📞 Call
+|--------------------------------------------------------------------------
+*/
+
+const startAudioCall = () => {
+    if (!selectedUser.value?.id) {
+        alert('Select a user first.');
+        return;
+    }
+
+    if (!callWidgetRef.value) {
+        alert('Call system not ready. Please refresh the page.');
+        return;
+    }
+
+    callWidgetRef.value.startCall(selectedUser.value.id, 'audio');
+};
+
+
+/*
+|--------------------------------------------------------------------------
 | Load
 |--------------------------------------------------------------------------
 */
@@ -1150,8 +1217,6 @@ const loadConversations = async () => {
         const response = await getAdminChats();
 
         if (response.data?.success) {
-            // ⭐ Backend "conversations" bhej raha hai (paginated)
-            // Frontend "chats" bhi handle karta hai
             conversations.value =
                 response.data.chats
                 || response.data.conversations?.data
@@ -1165,9 +1230,6 @@ const loadConversations = async () => {
     }
 };
 
-/**
- * ⭐ Ab yeh function conversationId leta hai (user_id nahi)
- */
 const loadConversation = async (conversationId, showLoading = true) => {
     try {
         if (showLoading) loadingMessages.value = true;
@@ -1177,7 +1239,6 @@ const loadConversation = async (conversationId, showLoading = true) => {
         if (response.data?.success) {
             messages.value = response.data.messages || [];
 
-            // Agar selectedUser pehle se set nahi hai, toh conversation se le lo
             if (!selectedUser.value) {
                 const conversation = conversations.value.find(
                     (item) => Number(item.id) === Number(conversationId)
@@ -1214,7 +1275,6 @@ const loadCanned = async () => {
 */
 
 const selectConversation = async (conversation) => {
-    // ⭐ conversation.id store karo (user_id nahi)
     selectedConversationId.value = conversation.id;
     selectedUserId.value = conversation.user_id;
     selectedUser.value = conversation.user || null;
@@ -1330,7 +1390,6 @@ const sendMessage = async () => {
     try {
         sending.value = true;
 
-        // ⭐ conversation.id bhejo (user_id nahi)
         const response = await sendAdminChatMessage(
             selectedConversationId.value,
             text,
@@ -1523,6 +1582,7 @@ const contextDelete = async () => {
 
 const openMenu = (event, message) => {
     if (message.deleted_at) return;
+    if (message.sender_type === 'system') return;
 
     activeMenu.value = message.id;
     activeMenuMessage.value = message;
@@ -1600,7 +1660,7 @@ const deleteForMe = async () => {
     if (!message) return;
     closeMessageMenu();
     try {
-        await deleteAdminChatMessage(message.id, 'me');   // ✅
+        await deleteAdminChatMessage(message.id, 'me');
         messages.value = messages.value.filter((m) => m.id !== message.id);
     } catch (error) {
         alert(error.response?.data?.message || 'Unable to delete.');
@@ -1612,7 +1672,7 @@ const deleteForEveryone = async () => {
     if (!message) return;
     closeMessageMenu();
     try {
-        await deleteAdminChatMessage(message.id, 'all');   // ✅
+        await deleteAdminChatMessage(message.id, 'all');
         message.deleted_at = new Date().toISOString();
         message.message = null;
         message.attachment_url = null;
@@ -2244,6 +2304,27 @@ onUnmounted(() => {
     display: block;
 }
 
+/* 📞 Header call button */
+.header-call-btn {
+    width: 40px;
+    height: 40px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    border-radius: 50%;
+    background: #ecfdf5;
+    color: #10b981;
+    cursor: pointer;
+    transition: background 0.15s ease, transform 0.15s ease;
+}
+
+.header-call-btn:hover {
+    background: #d1fae5;
+    transform: scale(1.05);
+}
+
 /* Header 3-dot menu */
 .header-menu-wrapper {
     position: relative;
@@ -2333,6 +2414,23 @@ onUnmounted(() => {
 .message-row { display: flex; margin: 0; }
 .user-row { justify-content: flex-start; }
 .admin-row { justify-content: flex-end; }
+.system-row { justify-content: center; }
+
+/* ⭐ SYSTEM MESSAGE */
+.system-message {
+    display: inline-block;
+    padding: 5px 14px;
+    background: #e5e7eb;
+    color: #4b5563;
+    font-size: 11.5px;
+    font-weight: 500;
+    border-radius: 20px;
+    text-align: center;
+    max-width: 80%;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
 
 .message-bubble-wrapper { position: relative; max-width: 68%; }
 
@@ -2423,7 +2521,6 @@ onUnmounted(() => {
 .admin-message .read-tick { color: rgba(255, 255, 255, 0.6); }
 .admin-message .read-tick.read { color: #ffffff; }
 
-/* Context menu (Teleported) */
 .message-menu {
     position: fixed;
     z-index: 2147483647;
@@ -2459,7 +2556,6 @@ onUnmounted(() => {
 .message-menu .menu-item.danger:hover { background: #fee2e2; }
 .message-menu .menu-item svg { flex-shrink: 0; width: 14px; height: 14px; }
 
-/* Typing */
 .typing-indicator {
     display: flex;
     gap: 4px;
@@ -2488,7 +2584,6 @@ onUnmounted(() => {
     30% { transform: translateY(-5px); }
 }
 
-/* Attachments */
 .message-attachment { margin-bottom: 6px; }
 
 .attachment-image {
@@ -2524,7 +2619,6 @@ onUnmounted(() => {
 .file-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .file-size { opacity: 0.7; font-size: 10px; }
 
-/* Previews */
 .file-preview {
     display: flex;
     align-items: center;
@@ -2608,7 +2702,6 @@ onUnmounted(() => {
     flex-shrink: 0;
 }
 
-/* Pickers */
 .emoji-picker-wrapper {
     position: absolute;
     bottom: 70px;
@@ -2679,7 +2772,6 @@ onUnmounted(() => {
 .canned-item span { font-size: 12px; color: #6b7280; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .canned-empty { padding: 20px; text-align: center; color: #6b7280; font-size: 13px; }
 
-/* Reply area */
 .reply-area {
     display: flex;
     align-items: center;
@@ -2760,7 +2852,6 @@ onUnmounted(() => {
 .send-button:hover:not(:disabled) { background: #4338ca; }
 .send-button:disabled { opacity: 0.5; cursor: not-allowed; }
 
-/* Recording */
 .recording-bar {
     flex: 1;
     display: flex;
@@ -2850,7 +2941,6 @@ onUnmounted(() => {
 .recording-stop:hover:not(:disabled) { background: #b91c1c; }
 .recording-stop:disabled { opacity: 0.5; cursor: not-allowed; }
 
-/* Empty */
 .no-selected-user,
 .no-chats,
 .empty-messages,
@@ -2875,7 +2965,6 @@ onUnmounted(() => {
 .loading-users { flex: 1; }
 .loading-messages, .empty-messages { height: 100%; flex: 1; }
 
-/* Scrollbar */
 .user-list::-webkit-scrollbar,
 .messages-container::-webkit-scrollbar,
 .search-results::-webkit-scrollbar {
@@ -2889,7 +2978,6 @@ onUnmounted(() => {
     border-radius: 10px;
 }
 
-/* Responsive */
 @media (max-width: 900px) {
     .admin-chat { grid-template-columns: 260px 1fr; }
     .message-bubble-wrapper { max-width: 80%; }

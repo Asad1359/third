@@ -33,6 +33,19 @@
                     </div>
 
                     <div class="header-actions">
+
+                        <!-- 📞 CALL SUPPORT -->
+                        <button
+                            class="header-icon-btn"
+                            @click="callSupport"
+                            :disabled="!supportUserId"
+                            :title="supportUserId ? 'Call support' : 'Support not available'"
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>
+                            </svg>
+                        </button>
+
                         <button
                             class="header-icon-btn"
                             @click="showSearch = !showSearch"
@@ -89,10 +102,21 @@
                             class="message-row"
                             :class="{
                                 'user-message-row': message.sender_type === 'user',
-                                'admin-message-row': message.sender_type === 'admin'
+                                'admin-message-row': message.sender_type === 'admin',
+                                'system-message-row': message.sender_type === 'system'
                             }"
                         >
+                            <!-- ⭐ SYSTEM MESSAGE (call logs, etc.) -->
                             <div
+                                v-if="message.sender_type === 'system'"
+                                class="system-message"
+                            >
+                                {{ message.message }}
+                            </div>
+
+                            <!-- NORMAL MESSAGE -->
+                            <div
+                                v-else
                                 class="message-bubble-wrapper"
                                 @contextmenu.prevent="openMenu($event, message)"
                             >
@@ -349,6 +373,14 @@
             <ImageLightbox v-model="lightboxOpen" :src="lightboxSrc" />
 
         </div>
+
+
+        <!-- 📞 Call widget -->
+        <CallWidget
+            ref="callWidgetRef"
+            :current-user="currentUser"
+        />
+
     </Teleport>
 
 
@@ -418,6 +450,10 @@ import { useUserChatChannel } from '../composables/useChatChannel';
 import VoicePlayer from './VoicePlayer.vue';
 import ImageLightbox from './ImageLightbox.vue';
 
+// ⭐ Call widget
+import CallWidget from './CallWidget.vue';
+import { authState } from '../stores/auth';
+
 import { playNotificationSound, isMuted } from '../utils/notificationSound';
 import {
     requestNotificationPermission,
@@ -464,6 +500,11 @@ const activeMenu = ref(null);
 const activeMenuMessage = ref(null);
 const menuStyle = ref({ top: '0px', left: '0px' });
 
+// ⭐ Call
+const callWidgetRef = ref(null);
+const currentUser = computed(() => authState.user);
+const supportUserId = ref(null);
+
 let unreadPollTimer = null;
 let messagePollTimer = null;
 let typingTimer = null;
@@ -505,14 +546,24 @@ const { connected } = useUserChatChannel({
             scrollToBottom();
         }
 
-        if (!isMuted() && payload.sender_type !== 'user') {
+        // ⭐ Track admin id
+        if (
+            payload.sender_type === 'admin' &&
+            payload.sender_id &&
+            !supportUserId.value
+        ) {
+            supportUserId.value = payload.sender_id;
+        }
+
+        // Sound / notifications for admin messages only
+        if (!isMuted() && payload.sender_type === 'admin') {
             playNotificationSound();
         }
 
         if (
             isDesktopNotificationsEnabled() &&
             !isOpen.value &&
-            payload.sender_type !== 'user'
+            payload.sender_type === 'admin'
         ) {
             showNotification(
                 'New message from Support',
@@ -524,7 +575,7 @@ const { connected } = useUserChatChannel({
         if (isOpen.value) {
             unreadCount.value = 0;
             markChatAsRead().catch(() => {});
-        } else {
+        } else if (payload.sender_type !== 'system') {
             unreadCount.value++;
         }
     },
@@ -588,6 +639,27 @@ const formattedRecordTime = computed(() => {
 
 /*
 |--------------------------------------------------------------------------
+| 📞 Call support
+|--------------------------------------------------------------------------
+*/
+
+const callSupport = () => {
+    if (!supportUserId.value) {
+        alert('Support is not available right now. Please send a message first.');
+        return;
+    }
+
+    if (!callWidgetRef.value) {
+        alert('Call system not ready. Please refresh the page.');
+        return;
+    }
+
+    callWidgetRef.value.startCall(supportUserId.value, 'audio');
+};
+
+
+/*
+|--------------------------------------------------------------------------
 | Load
 |--------------------------------------------------------------------------
 */
@@ -602,6 +674,19 @@ const loadChat = async () => {
             messages.value = response.data.messages || [];
             isBlocked.value = !!response.data.is_blocked;
             blockedReason.value = response.data.blocked_reason || '';
+
+            // ⭐ Extract admin/support id
+            if (response.data.support_user_id) {
+                supportUserId.value = response.data.support_user_id;
+            } else {
+                const adminMsg = messages.value.find(
+                    (m) => m.sender_type === 'admin' && m.sender_id
+                );
+                if (adminMsg && !supportUserId.value) {
+                    supportUserId.value = adminMsg.sender_id;
+                }
+            }
+
             await scrollToBottom();
 
             if (isOpen.value) {
@@ -785,6 +870,7 @@ const sendMessage = async () => {
 
 const openMenu = (event, message) => {
     if (message.deleted_at) return;
+    if (message.sender_type === 'system') return;
 
     activeMenu.value = message.id;
     activeMenuMessage.value = message;
@@ -1129,9 +1215,7 @@ const formatTime = (date) => {
 
 const startPolling = () => {
     stopPolling();
-    // ⭐ 5 seconds par unread count check karein
     unreadPollTimer = setInterval(loadUnreadCount, 5000);
-    // ⭐ 5 seconds par messages refresh karein
     messagePollTimer = setInterval(() => {
         if (isOpen.value) loadChat();
     }, 5000);
@@ -1206,8 +1290,6 @@ onUnmounted(() => {
 
 
 <style scoped>
-/* CSS same as before — apni file ki CSS waise hi rakh sakte hain */
-/* Agar chahein toh neeche diya gaya CSS bhi paste kar dein */
 
 .chat-widget {
     position: fixed;
@@ -1324,6 +1406,7 @@ onUnmounted(() => {
 }
 
 .header-icon-btn:hover { background: rgba(255, 255, 255, 0.15); }
+.header-icon-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
 .header-close {
     border: none;
@@ -1384,6 +1467,23 @@ onUnmounted(() => {
 .message-row { display: flex; margin: 0; }
 .user-message-row { justify-content: flex-end; }
 .admin-message-row { justify-content: flex-start; }
+.system-message-row { justify-content: center; }
+
+/* ⭐ SYSTEM MESSAGE */
+.system-message {
+    display: inline-block;
+    padding: 5px 14px;
+    background: #e5e7eb;
+    color: #4b5563;
+    font-size: 11.5px;
+    font-weight: 500;
+    border-radius: 20px;
+    text-align: center;
+    max-width: 80%;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
 
 .message-bubble-wrapper { position: relative; max-width: 78%; }
 

@@ -27,6 +27,11 @@ class ChatMessage extends Model
         'attachment_size',
         'deleted_for_sender',
         'deleted_for_receiver',
+
+        // ⭐ Call log metadata
+        'call_direction',
+        'call_duration',
+        'call_type',
     ];
 
     protected $casts = [
@@ -37,6 +42,9 @@ class ChatMessage extends Model
         'read_at' => 'datetime',
         'starred_at' => 'datetime',
         'attachment_size' => 'integer',
+
+        // ⭐ Call log metadata
+        'call_duration' => 'integer',
     ];
 
     protected $appends = [
@@ -55,6 +63,11 @@ class ChatMessage extends Model
     public function parent()
     {
         return $this->belongsTo(ChatMessage::class, 'parent_message_id');
+    }
+
+    public function sender()
+    {
+        return $this->belongsTo(User::class, 'sender_id');
     }
 
     public function getAttachmentUrlAttribute(): ?string
@@ -85,10 +98,4 @@ class ChatMessage extends Model
     {
         return $this->attachment_type === 'application/pdf';
     }
-
-    public function sender()
-{
-    return $this->belongsTo(User::class, 'sender_id');
-}
-
 }

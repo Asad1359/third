@@ -57,8 +57,6 @@
                     <span>Profile</span>
                 </router-link>
 
-                
-
                 <router-link
                     :to="{ name: 'user.theme' }"
                     class="nav-item"
@@ -177,6 +175,9 @@
         <!-- FLOATING CHAT WIDGET -->
         <ChatWidget />
 
+        <!-- 📞 CALL WIDGET -->
+        <CallWidget :current-user="user" />
+
     </div>
 </template>
 
@@ -200,6 +201,7 @@ import {
 } from '../stores/auth';
 
 import ChatWidget from '../components/ChatWidget.vue';
+import CallWidget from '../components/CallWidget.vue';   // ⭐ ADD
 
 const router = useRouter();
 const route = useRoute();

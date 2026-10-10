@@ -140,14 +140,15 @@ class ChatController extends Controller
                 ->update(['read_at' => now()]);
 
             return response()->json([
-                'success'        => true,
-                'conversation'   => [
+                'success'         => true,
+                'conversation'    => [
                     'id'   => $conversation->id,
                     'type' => $conversation->type,
                 ],
-                'messages'       => $messages,
-                'is_blocked'     => (bool) $conversation->is_blocked,
-                'blocked_reason' => $conversation->blocked_reason,
+                'messages'        => $messages,
+                'is_blocked'      => (bool) $conversation->is_blocked,
+                'blocked_reason'  => $conversation->blocked_reason,
+                'support_user_id' => $admin->id,
             ]);
 
         } catch (\Throwable $e) {
